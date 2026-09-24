@@ -1,0 +1,61 @@
+name: Auto Heal & Sync IPTV Sources
+
+on:
+  schedule:
+    # 每天北京时间 04:00 (UTC 20:00) 自动巡检运行
+    - cron: '0 20 * * *'
+  workflow_dispatch: # 支持手动点击一键立即执行
+
+permissions:
+  contents: write
+
+jobs:
+  heal-and-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: |
+          pip install aiohttp pyyaml
+
+      - name: Run Auto-Heal & Probe Engine
+        run: |
+          python src/tv_flow/cli.py run --config config/config.yaml
+
+      - name: Commit Updated Playlists to GitHub
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add output/*.m3u output/*.json
+          if git diff --staged --quiet; then
+            echo "No changes in stream availability."
+          else
+            git commit -m "Auto-heal: Update alive IPTV streams [$(date +'%Y-%m-%d %H:%M')]"
+            git push origin main
+          fi
+
+      - name: Mirror & Push to Gitee (Domestic Fast Access)
+        env:
+          GITEE_USER: ${{ secrets.GITEE_USER }}
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+          GITEE_REPO: ${{ secrets.GITEE_REPO }}
+        run: |
+          if [ -n "$GITEE_TOKEN" ] && [ -n "$GITEE_USER" ]; then
+            echo "Pushing updated sources to Gitee..."
+            REPO_NAME="${GITEE_REPO:-tv-flow}"
+            git remote add gitee "https://${GITEE_USER}:${GITEE_TOKEN}@gitee.com/${GITEE_USER}/${REPO_NAME}.git" || true
+            git push gitee main --force
+            echo "Successfully synced to Gitee!"
+          else
+            echo "Notice: GITEE_TOKEN or GITEE_USER not configured in repository secrets, skipping Gitee mirror."
+          fi

@@ -1,0 +1,53 @@
+# tv-flow 核心配置
+
+upstreams:
+  - name: "fanmingming-ipv6"
+    url: "https://raw.githubusercontent.com/fanmingming/live/main/tv/m3u/ipv6.m3u"
+    enabled: true
+  - name: "guovin-ipv6"
+    url: "https://raw.githubusercontent.com/Guovin/iptv-api/gd/output/ipv6/result.m3u"
+    enabled: true
+  - name: "yang-gather"
+    url: "https://raw.githubusercontent.com/YanG-1989/m3u/main/Gather.m3u"
+    enabled: true
+
+# 长辈专属频道严格白名单（按顺序输出，杜绝杂乱与购物台）
+mom_whitelist:
+  - "CCTV-1"
+  - "CCTV-2"
+  - "CCTV-3"
+  - "CCTV-4"
+  - "CCTV-5"
+  - "CCTV-5+"
+  - "CCTV-6"
+  - "CCTV-7"
+  - "CCTV-8"
+  - "CCTV-9"
+  - "CCTV-10"
+  - "CCTV-11"
+  - "CCTV-12"
+  - "CCTV-13"
+  - "CCTV-14"
+  - "CCTV-16"
+  - "CCTV-4K"
+  - "湖南卫视"
+  - "浙江卫视"
+  - "江苏卫视"
+  - "北京卫视"
+  - "东方卫视"
+  - "广东卫视"
+  - "山东卫视"
+  - "安徽卫视"
+
+probe:
+  timeout_seconds: 3.5
+  concurrency: 50
+  max_retries: 1
+  mom_max_streams_per_channel: 1   # 长辈版：每个频道只保留响应最快的那 1 条优质流
+  pro_max_streams_per_channel: 2   # 资深版：每个频道保留最多 2 条高可用备用流
+
+output:
+  dir: "output"
+  mom_file: "mom-live.m3u"
+  pro_file: "pro-live.m3u"
+  vod_template: "vod-config.json"

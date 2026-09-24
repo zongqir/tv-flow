@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# @describe tv-flow: 智能家庭电视源自愈、多源测活与自动分发管道
+
+SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
+PROJECT_DIR="$(cd "$(dirname "${SCRIPT_PATH}")/.." && pwd)"
+VENV_PYTHON="${PROJECT_DIR}/.venv/bin/python3"
+
+if [[ ! -f "${VENV_PYTHON}" ]]; then
+    echo "Error: Virtual environment not found at ${VENV_PYTHON}" >&2
+    exit 1
+fi
+
+export PYTHONPATH="${PROJECT_DIR}/src:${PYTHONPATH:-}"
+
+# @cmd 执行全网多源抓取、并发测活并生成自愈 M3U 文件
+# @option -c --config <PATH> 配置文件路径 (默认: config/config.yaml)
+# @option --concurrency <INT> 并发探测协程数 (默认: 50)
+run() {
+    local config="${argc_config:-${PROJECT_DIR}/config/config.yaml}"
+    local concurrency="${argc_concurrency:-}"
+    local args=("-c" "$config")
+    if [[ -n "$concurrency" ]]; then
+        args+=("--concurrency" "$concurrency")
+    fi
+    exec "${VENV_PYTHON}" "${PROJECT_DIR}/src/tv_flow/cli.py" run "${args[@]}"
+}
+
+eval "$(argc --argc-eval "$0" "$@")"
