@@ -21,22 +21,21 @@ steps:
     limit: 2
     interval_sec: 120
 
-- name: push_to_gitee
-  description: "将最新自愈后的 M3U 播放列表原子提交并推送到 Gitee 国内加速源"
+- name: push_to_git_remotes
+  description: "将最新自愈后的 M3U 播放列表原子提交并推送到 GitHub 与 Gitee"
   depends:
   - probe_and_generate
   run: |
     export HOME=/home/zongqir
     export PATH=/home/zongqir/.local/bin:$PATH
     cd /home/zongqir/code/tool/tv-flow
+    git add output/
+    if ! git diff --cached --quiet; then
+        git commit -m "chore(live): auto-heal TV streams $(date +'%Y-%m-%d %H:%M')"
+    fi
+    if git remote | grep -q github; then
+        git push github main || echo "[Warn] GitHub push failed"
+    fi
     if git remote | grep -q gitee; then
-        git add output/
-        if ! git diff --cached --quiet; then
-            git commit -m "chore(live): auto-heal TV streams $(date +'%Y-%m-%d %H:%M')"
-            git push gitee main
-        else
-            echo "[tv-flow] No stream changes detected, skipping git push."
-        fi
-    else
-        echo "[tv-flow] Gitee remote not configured yet. Skipping push."
+        git push gitee main || echo "[Warn] Gitee push failed"
     fi

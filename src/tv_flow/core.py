@@ -225,27 +225,24 @@ class TvFlowEngine:
             for it in pro_results:
                 f.write(f'{it.raw_extinf}\n{it.url}\n')
 
-        # 导出 VOD 配置模板
+        # 导出 VOD / 电视聚合配置模板
         vod_file = output_dir / self.config.get("output", {}).get("vod_template", "vod-config.json")
         vod_content = """{
-  "spider": "https://mirror.ghproxy.com/https://raw.githubusercontent.com/FongMi/TV/release/jar/custom_spider.jar",
   "wallpaper": "https://picsum.photos/1920/1080",
   "lives": [
     {
-      "name": "自愈IPv6直播",
+      "name": "长辈精选 (自愈IPv6)",
       "type": 0,
-      "url": "./mom-live.m3u",
+      "url": "https://cdn.jsdelivr.net/gh/zongqir/tv-flow@main/output/mom-live.m3u",
       "epg": "https://live.fanmingming.com/e.xml",
       "logo": "https://live.fanmingming.com/tv/{name}.png"
-    }
-  ],
-  "sites": [
+    },
     {
-      "key": "fantaiying",
-      "name": "🚀 饭太硬 | 原画云盘",
-      "type": 3,
-      "api": "csp_Config",
-      "ext": "http://饭太硬.top/tv"
+      "name": "资深全量 (千路高可用)",
+      "type": 0,
+      "url": "https://cdn.jsdelivr.net/gh/zongqir/tv-flow@main/output/pro-live.m3u",
+      "epg": "https://live.fanmingming.com/e.xml",
+      "logo": "https://live.fanmingming.com/tv/{name}.png"
     }
   ]
 }"""
