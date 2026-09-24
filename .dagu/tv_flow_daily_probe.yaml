@@ -11,6 +11,11 @@ steps:
   run: |
     export HOME=/home/zongqir
     export PATH=/home/zongqir/.local/bin:$PATH
+    export http_proxy=http://127.0.0.1:7890
+    export https_proxy=http://127.0.0.1:7890
+    export all_proxy=socks5://127.0.0.1:7891
+    export no_proxy="localhost,127.0.0.1,::1"
+    cd /home/zongqir/code/tool/tv-flow
     /home/zongqir/.local/bin/tv-flow run --concurrency 50
   retry_policy:
     limit: 2

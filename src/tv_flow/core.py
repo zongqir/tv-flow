@@ -108,23 +108,30 @@ class TvFlowEngine:
 
     async def fetch_upstream(self, session: aiohttp.ClientSession, url: str) -> List[StreamItem]:
         try:
-            timeout = aiohttp.ClientTimeout(total=15)
+            timeout = aiohttp.ClientTimeout(total=20)
             headers = {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             }
-            async with session.get(url, headers=headers, timeout=timeout) as resp:
+            proxy = os.environ.get("https_proxy") or os.environ.get("http_proxy")
+            if not proxy and "github" in url.lower():
+                proxy = "http://127.0.0.1:7890"
+
+            async with session.get(url, headers=headers, timeout=timeout, proxy=proxy) as resp:
                 if resp.status == 200:
                     text = await resp.text(errors="ignore")
                     return self.parse_m3u(text)
         except Exception as e:
-            print(f"[Warn] Failed to fetch upstream {url}: {e}")
+            print(f"[Warn] Failed to fetch upstream {url}: {repr(e)}")
         return []
 
     async def run(self, max_concurrent: Optional[int] = None) -> Tuple[int, int]:
         concurrency = max_concurrent or self.config.get("probe", {}).get("concurrency", 50)
         timeout_sec = self.config.get("probe", {}).get("timeout_seconds", 3.5)
         mom_whitelist = self.config.get("mom_whitelist", [])
-        output_dir = Path(self.config.get("output", {}).get("dir", "output"))
+        output_dir_str = self.config.get("output", {}).get("dir", "output")
+        output_dir = Path(output_dir_str)
+        if not output_dir.is_absolute():
+            output_dir = (self.config_path.parent.parent / output_dir).resolve()
         output_dir.mkdir(parents=True, exist_ok=True)
 
         loop = asyncio.get_running_loop()
@@ -135,9 +142,9 @@ class TvFlowEngine:
         print("[tv-flow] Starting upstream harvesting...")
         all_raw_items: List[StreamItem] = []
 
-        connector = aiohttp.TCPConnector(limit=concurrency, ssl=False)
-        # 1. 抓取上游源（可能需要境外代理访问 GitHub）
-        async with aiohttp.ClientSession(connector=connector, trust_env=True) as fetch_session:
+        # 1. 抓取上游源（使用 AsyncResolver + 自动代理支持 GitHub）
+        fetch_connector = aiohttp.TCPConnector(limit=concurrency, ssl=False, resolver=aiohttp.AsyncResolver())
+        async with aiohttp.ClientSession(connector=fetch_connector, trust_env=True) as fetch_session:
             for src in self.config.get("upstreams", []):
                 if src.get("enabled", True):
                     items = await self.fetch_upstream(fetch_session, src["url"])
