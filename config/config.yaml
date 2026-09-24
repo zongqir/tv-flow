@@ -7,8 +7,8 @@ upstreams:
   - name: "guovin-ipv6"
     url: "https://raw.githubusercontent.com/Guovin/iptv-api/gd/output/ipv6/result.m3u"
     enabled: true
-  - name: "yang-gather"
-    url: "https://raw.githubusercontent.com/YanG-1989/m3u/main/Gather.m3u"
+  - name: "zbds-iptv4"
+    url: "https://live.zbds.top/tv/iptv4.m3u"
     enabled: true
 
 # 长辈专属频道严格白名单（按顺序输出，杜绝杂乱与购物台）

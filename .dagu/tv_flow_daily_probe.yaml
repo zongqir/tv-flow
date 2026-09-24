@@ -1,0 +1,37 @@
+type: graph
+schedule: "0 4 * * *"
+tags:
+- tv
+- iptv
+- live
+- auto-heal
+steps:
+- name: probe_and_generate
+  description: "每日凌晨 04:00 自动抓取权威上游、高并发测活洗流，生成长辈定制版与全量高可用 M3U"
+  run: |
+    export HOME=/home/zongqir
+    export PATH=/home/zongqir/.local/bin:$PATH
+    /home/zongqir/.local/bin/tv-flow run --concurrency 50
+  retry_policy:
+    limit: 2
+    interval_sec: 120
+
+- name: push_to_gitee
+  description: "将最新自愈后的 M3U 播放列表原子提交并推送到 Gitee 国内加速源"
+  depends:
+  - probe_and_generate
+  run: |
+    export HOME=/home/zongqir
+    export PATH=/home/zongqir/.local/bin:$PATH
+    cd /home/zongqir/code/tool/tv-flow
+    if git remote | grep -q gitee; then
+        git add output/
+        if ! git diff --cached --quiet; then
+            git commit -m "chore(live): auto-heal TV streams $(date +'%Y-%m-%d %H:%M')"
+            git push gitee main
+        else
+            echo "[tv-flow] No stream changes detected, skipping git push."
+        fi
+    else
+        echo "[tv-flow] Gitee remote not configured yet. Skipping push."
+    fi

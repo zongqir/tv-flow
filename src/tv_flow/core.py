@@ -57,6 +57,16 @@ class TvFlowEngine:
             if line.startswith("#EXTINF:"):
                 extinf = line
             elif line.startswith("http") and extinf:
+                url = line.strip()
+                # 过滤明显非直播流或广告短视频（如 mp4/flv/kwimgs/bdstatic 等假流）
+                url_clean = url.lower().split("?")[0]
+                if any(url_clean.endswith(ext) for ext in [".mp4", ".flv", ".mkv", ".avi"]):
+                    extinf = ""
+                    continue
+                if any(bad in url.lower() for bad in ["kwimgs.com", "bdstatic.com", "douyinvod.com"]):
+                    extinf = ""
+                    continue
+
                 name_match = re.search(r',([^,]+)$', extinf)
                 name = name_match.group(1).strip() if name_match else ""
 
@@ -66,7 +76,7 @@ class TvFlowEngine:
                 logo_match = re.search(r'tvg-logo="([^"]+)"', extinf)
                 logo = logo_match.group(1).strip() if logo_match else ""
 
-                items.append(StreamItem(extinf, line, name, group, logo))
+                items.append(StreamItem(extinf, url, name, group, logo))
                 extinf = ""
         return items
 
@@ -80,10 +90,17 @@ class TvFlowEngine:
         try:
             async with session.get(item.url, headers=headers, timeout=timeout, allow_redirects=True) as resp:
                 if resp.status == 200:
-                    _ = await resp.content.read(1024)
-                    item.latency_ms = (time.time() - start_time) * 1000
-                    item.is_alive = True
-                    return True
+                    chunk = await resp.content.read(1024)
+                    # 严格要求 HLS 播放列表特征 (#EXTM3U 或 #EXT-X-)，杜绝伪装成 200 的 HTML 报错页或非法数据
+                    c_type = resp.headers.get("content-type", "").lower()
+                    if b"#EXTM3U" in chunk or b"#EXT-X-" in chunk or "mpegurl" in c_type:
+                        latency = (time.time() - start_time) * 1000
+                        # 境外/GitHub 代理流增加延迟惩罚，确保免梯环境国内原生 IPv6/CDN 优先胜出
+                        if "github.io" in item.url or "githubusercontent.com" in item.url:
+                            latency += 600.0
+                        item.latency_ms = latency
+                        item.is_alive = True
+                        return True
         except Exception:
             pass
         item.is_alive = False
@@ -110,38 +127,47 @@ class TvFlowEngine:
         output_dir = Path(self.config.get("output", {}).get("dir", "output"))
         output_dir.mkdir(parents=True, exist_ok=True)
 
+        loop = asyncio.get_running_loop()
+        def _silent_handler(l, ctx):
+            pass
+        loop.set_exception_handler(_silent_handler)
+
         print("[tv-flow] Starting upstream harvesting...")
         all_raw_items: List[StreamItem] = []
 
         connector = aiohttp.TCPConnector(limit=concurrency, ssl=False)
-        async with aiohttp.ClientSession(connector=connector, trust_env=True) as session:
-            # 1. 抓取所有启用的上游
+        # 1. 抓取上游源（可能需要境外代理访问 GitHub）
+        async with aiohttp.ClientSession(connector=connector, trust_env=True) as fetch_session:
             for src in self.config.get("upstreams", []):
                 if src.get("enabled", True):
-                    items = await self.fetch_upstream(session, src["url"])
+                    items = await self.fetch_upstream(fetch_session, src["url"])
                     print(f"  -> {src['name']}: {len(items)} streams fetched.")
                     all_raw_items.extend(items)
 
-            # 2. 按标准化频道聚合去重
-            channel_map: Dict[str, List[StreamItem]] = {}
-            for item in all_raw_items:
-                cname = item.clean_name()
-                if not cname:
-                    continue
-                if cname not in channel_map:
-                    channel_map[cname] = []
-                if item.url not in [x.url for x in channel_map[cname]]:
-                    channel_map[cname].append(item)
+        # 2. 按标准化频道聚合去重
+        channel_map: Dict[str, List[StreamItem]] = {}
+        for item in all_raw_items:
+            cname = item.clean_name()
+            if not cname:
+                continue
+            if cname not in channel_map:
+                channel_map[cname] = []
+            if item.url not in [x.url for x in channel_map[cname]]:
+                channel_map[cname].append(item)
 
-            print(f"[tv-flow] Total unique channels found: {len(channel_map)}. Starting concurrent probing...")
+        print(f"[tv-flow] Total unique channels found: {len(channel_map)}. Starting concurrent probing...")
 
+        # 3. 测活探针（必须直连，绝不走境外代理，以便直通国内运营商 IPv6 骨干网）
+        # 使用 aiodns AsyncResolver 杜绝 glibc getaddrinfo 线程池阻塞悬挂
+        resolver = aiohttp.AsyncResolver()
+        probe_connector = aiohttp.TCPConnector(limit=concurrency, ssl=False, resolver=resolver)
+        async with aiohttp.ClientSession(connector=probe_connector, trust_env=False) as probe_session:
             sem = asyncio.Semaphore(concurrency)
 
             async def sem_probe(it: StreamItem):
                 async with sem:
-                    return await self.probe_stream(session, it, timeout_sec)
+                    return await self.probe_stream(probe_session, it, timeout_sec)
 
-            # 收集待测试流：优先白名单，其余频道测试前 2 个候选
             tasks = []
             for cname, stream_list in channel_map.items():
                 is_mom_channel = any(target.lower() == cname.lower() for target in mom_whitelist)
