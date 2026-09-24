@@ -228,7 +228,6 @@ class TvFlowEngine:
         # 导出 VOD / 电视聚合配置模板
         vod_file = output_dir / self.config.get("output", {}).get("vod_template", "vod-config.json")
         vod_content = """{
-  "wallpaper": "https://picsum.photos/1920/1080",
   "lives": [
     {
       "name": "长辈精选 (自愈IPv6)",
