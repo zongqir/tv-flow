@@ -3,6 +3,8 @@ import aiohttp
 import os
 import re
 import time
+import json
+import shutil
 import yaml
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -225,28 +227,125 @@ class TvFlowEngine:
             for it in pro_results:
                 f.write(f'{it.raw_extinf}\n{it.url}\n')
 
-        # 导出 VOD / 电视聚合配置模板
-        vod_file = output_dir / self.config.get("output", {}).get("vod_template", "vod-config.json")
-        vod_content = """{
-  "lives": [
-    {
-      "name": "长辈精选 (自愈IPv6)",
-      "type": 0,
-      "url": "https://cdn.jsdelivr.net/gh/zongqir/tv-flow@main/output/mom-live.m3u",
-      "epg": "https://live.fanmingming.com/e.xml",
-      "logo": "https://live.fanmingming.com/tv/{name}.png"
-    },
-    {
-      "name": "资深全量 (千路高可用)",
-      "type": 0,
-      "url": "https://cdn.jsdelivr.net/gh/zongqir/tv-flow@main/output/pro-live.m3u",
-      "epg": "https://live.fanmingming.com/e.xml",
-      "logo": "https://live.fanmingming.com/tv/{name}.png"
-    }
-  ]
-}"""
-        with open(vod_file, "w", encoding="utf-8") as f:
-            f.write(vod_content)
+        # 导出电视仓/TVBox 单仓标准配置 (含爬虫、三大直连CMS影视源、豆瓣海报与高可用直播)
+        spider_url = "https://ghproxy.net/https://raw.githubusercontent.com/gaotianliuyun/gao/master/jar/pg.jar;md5;dffec63fb83a2b31b8606bd4bf6bead9"
+        wallpaper_url = "https://bing.img.run/rand_uhd.php"
+        sites_list = [
+            {
+                "key": "douban",
+                "name": "豆瓣热播 (推荐)",
+                "type": 3,
+                "api": "csp_Douban",
+                "searchable": 0,
+                "quickSearch": 0,
+                "filterable": 0
+            },
+            {
+                "key": "feifan",
+                "name": "非凡影视 (免解密直连)",
+                "type": 0,
+                "api": "http://cj.ffzyapi.com/api.php/provide/vod/at/xml/",
+                "searchable": 1,
+                "quickSearch": 1,
+                "filterable": 1
+            },
+            {
+                "key": "liangzi",
+                "name": "量子影视 (免解密直连)",
+                "type": 0,
+                "api": "https://cj.lziapi.com/api.php/provide/vod/at/xml/",
+                "searchable": 1,
+                "quickSearch": 1,
+                "filterable": 1
+            },
+            {
+                "key": "bfzy",
+                "name": "暴风影视 (免解密直连)",
+                "type": 0,
+                "api": "https://bfzyapi.com/api.php/provide/vod/at/xml/",
+                "searchable": 1,
+                "quickSearch": 1,
+                "filterable": 1
+            }
+        ]
+
+        # 1) 局域网版 (家庭电视专用，0延迟绝不超时)
+        lan_box = {
+            "spider": spider_url,
+            "wallpaper": wallpaper_url,
+            "sites": sites_list,
+            "lives": [
+                {
+                    "name": "长辈精选 (自愈IPv6 央卫高清)",
+                    "type": 0,
+                    "url": "http://192.168.0.116:20180/tv/live.m3u",
+                    "playerType": 1,
+                    "epg": "https://live.fanmingming.com/e.xml",
+                    "logo": "https://live.fanmingming.com/tv/{name}.png"
+                },
+                {
+                    "name": "资深全量 (千路高可用电视)",
+                    "type": 0,
+                    "url": "http://192.168.0.116:20180/tv/pro.m3u",
+                    "playerType": 1,
+                    "epg": "https://live.fanmingming.com/e.xml",
+                    "logo": "https://live.fanmingming.com/tv/{name}.png"
+                }
+            ]
+        }
+
+        # 2) 公网加速版 (国内 ghproxy 镜像)
+        wan_box = {
+            "spider": spider_url,
+            "wallpaper": wallpaper_url,
+            "sites": sites_list,
+            "lives": [
+                {
+                    "name": "长辈精选 (自愈IPv6 央卫高清)",
+                    "type": 0,
+                    "url": "https://ghproxy.net/https://raw.githubusercontent.com/zongqir/tv-flow/main/output/mom-live.m3u",
+                    "playerType": 1,
+                    "epg": "https://live.fanmingming.com/e.xml",
+                    "logo": "https://live.fanmingming.com/tv/{name}.png"
+                },
+                {
+                    "name": "资深全量 (千路高可用电视)",
+                    "type": 0,
+                    "url": "https://ghproxy.net/https://raw.githubusercontent.com/zongqir/tv-flow/main/output/pro-live.m3u",
+                    "playerType": 1,
+                    "epg": "https://live.fanmingming.com/e.xml",
+                    "logo": "https://live.fanmingming.com/tv/{name}.png"
+                }
+            ]
+        }
+
+        box_lan_file = output_dir / "box-lan.json"
+        box_wan_file = output_dir / "box.json"
+        vod_legacy_file = output_dir / self.config.get("output", {}).get("vod_template", "vod-config.json")
+
+        with open(box_lan_file, "w", encoding="utf-8") as f:
+            json.dump(lan_box, f, ensure_ascii=False, indent=2)
+
+        with open(box_wan_file, "w", encoding="utf-8") as f:
+            json.dump(wan_box, f, ensure_ascii=False, indent=2)
+
+        with open(vod_legacy_file, "w", encoding="utf-8") as f:
+            json.dump(wan_box, f, ensure_ascii=False, indent=2)
+
+        # 5. 自动分发至本地 Caddy 静态站点 (局域网直连)
+        caddy_tv_dir = Path("/vol1/1000/docker/caddy/site/tv")
+        try:
+            caddy_tv_dir.mkdir(parents=True, exist_ok=True)
+            import shutil
+            shutil.copy2(mom_file, caddy_tv_dir / "live.m3u")
+            shutil.copy2(mom_file, caddy_tv_dir / "mom-live.m3u")
+            shutil.copy2(pro_file, caddy_tv_dir / "pro.m3u")
+            shutil.copy2(pro_file, caddy_tv_dir / "pro-live.m3u")
+            shutil.copy2(box_lan_file, caddy_tv_dir / "box.json")
+            shutil.copy2(box_wan_file, caddy_tv_dir / "box-wan.json")
+            print(f"[tv-flow] Successfully synchronized to Caddy LAN site: {caddy_tv_dir}")
+        except Exception as e:
+            print(f"[tv-flow] Notice: Could not sync to Caddy site ({e})")
 
         print(f"[tv-flow] Completed. Mom Channels: {len(mom_results)}, Pro Streams: {len(pro_results)}")
         return len(mom_results), len(pro_results)
