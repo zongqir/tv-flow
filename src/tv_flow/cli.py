@@ -1,6 +1,13 @@
 import argparse
 import asyncio
 import sys
+from pathlib import Path
+
+# Ensure src directory is in sys.path when invoked directly as a script
+_src_dir = str(Path(__file__).resolve().parent.parent)
+if _src_dir not in sys.path:
+    sys.path.insert(0, _src_dir)
+
 from tv_flow.core import TvFlowEngine
 
 def main():

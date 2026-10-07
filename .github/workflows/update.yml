@@ -26,11 +26,11 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          pip install aiohttp pyyaml
+          pip install aiohttp pyyaml aiodns
 
       - name: Run Auto-Heal & Probe Engine
         run: |
-          python src/tv_flow/cli.py run --config config/config.yaml
+          PYTHONPATH=src python src/tv_flow/cli.py run --config config/config.yaml
 
       - name: Commit Updated Playlists to GitHub
         run: |

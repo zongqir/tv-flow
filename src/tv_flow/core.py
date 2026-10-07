@@ -2,12 +2,20 @@ import asyncio
 import aiohttp
 import os
 import re
+import socket
 import time
 import json
 import shutil
 import yaml
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
+
+def create_resolver():
+    try:
+        import aiodns  # noqa: F401
+        return aiohttp.AsyncResolver()
+    except Exception:
+        return aiohttp.DefaultResolver()
 
 class StreamItem:
     def __init__(self, raw_extinf: str, url: str, channel_name: str, group_title: str = "", tvg_logo: str = ""):
@@ -116,7 +124,11 @@ class TvFlowEngine:
             }
             proxy = os.environ.get("https_proxy") or os.environ.get("http_proxy")
             if not proxy and "github" in url.lower():
-                proxy = "http://127.0.0.1:7890"
+                try:
+                    with socket.create_connection(("127.0.0.1", 7890), timeout=0.2):
+                        proxy = "http://127.0.0.1:7890"
+                except Exception:
+                    proxy = None
 
             async with session.get(url, headers=headers, timeout=timeout, proxy=proxy) as resp:
                 if resp.status == 200:
@@ -145,7 +157,7 @@ class TvFlowEngine:
         all_raw_items: List[StreamItem] = []
 
         # 1. 抓取上游源（使用 AsyncResolver + 自动代理支持 GitHub）
-        fetch_connector = aiohttp.TCPConnector(limit=concurrency, ssl=False, resolver=aiohttp.AsyncResolver())
+        fetch_connector = aiohttp.TCPConnector(limit=concurrency, ssl=False, resolver=create_resolver())
         async with aiohttp.ClientSession(connector=fetch_connector, trust_env=True) as fetch_session:
             for src in self.config.get("upstreams", []):
                 if src.get("enabled", True):
@@ -167,9 +179,8 @@ class TvFlowEngine:
         print(f"[tv-flow] Total unique channels found: {len(channel_map)}. Starting concurrent probing...")
 
         # 3. 测活探针（必须直连，绝不走境外代理，以便直通国内运营商 IPv6 骨干网）
-        # 使用 aiodns AsyncResolver 杜绝 glibc getaddrinfo 线程池阻塞悬挂
-        resolver = aiohttp.AsyncResolver()
-        probe_connector = aiohttp.TCPConnector(limit=concurrency, ssl=False, resolver=resolver)
+        # 使用 aiodns AsyncResolver 杜绝 glibc getaddrinfo 线程池阻塞悬挂（无 aiodns 则回退 DefaultResolver）
+        probe_connector = aiohttp.TCPConnector(limit=concurrency, ssl=False, resolver=create_resolver())
         async with aiohttp.ClientSession(connector=probe_connector, trust_env=False) as probe_session:
             sem = asyncio.Semaphore(concurrency)
 
