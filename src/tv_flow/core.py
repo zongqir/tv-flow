@@ -191,7 +191,7 @@ class TvFlowEngine:
             tasks = []
             for cname, stream_list in channel_map.items():
                 is_mom_channel = any(target.lower() == cname.lower() for target in mom_whitelist)
-                sample_count = 6 if is_mom_channel else 2
+                sample_count = len(stream_list) if is_mom_channel else min(len(stream_list), 4)
                 for it in stream_list[:sample_count]:
                     tasks.append(sem_probe(it))
 
@@ -201,7 +201,7 @@ class TvFlowEngine:
         mom_results: List[StreamItem] = []
         pro_results: List[StreamItem] = []
 
-        # 构建长辈专属版本 (严格按照白名单顺序排序输出)
+        # 构建长辈专属版本 (严格按照白名单顺序排序输出，绝不注入死链)
         for target_name in mom_whitelist:
             for cname, items in channel_map.items():
                 if target_name.lower() == cname.lower():
@@ -209,20 +209,15 @@ class TvFlowEngine:
                     if alive:
                         alive.sort(key=lambda x: x.latency_ms)
                         mom_results.append(alive[0])
-                    elif items:
-                        # 容灾兜底：当运行环境缺少 IPv6 路由导致探针受限时，保底注入首选权威流
-                        mom_results.append(items[0])
                     break
 
-        # 构建全量高可用版本
+        # 构建全量高可用版本 (仅保留健康测活流，按延时升序)
         pro_max = self.config.get("probe", {}).get("pro_max_streams_per_channel", 2)
         for cname, items in channel_map.items():
             alive = [x for x in items if x.is_alive]
             if alive:
                 alive.sort(key=lambda x: x.latency_ms)
                 pro_results.extend(alive[:pro_max])
-            elif items:
-                pro_results.extend(items[:pro_max])
 
         # 4. 导出 M3U 文件
         mom_file = output_dir / self.config.get("output", {}).get("mom_file", "mom-live.m3u")

@@ -1,14 +1,14 @@
 # tv-flow 核心配置
 
 upstreams:
-  - name: "fanmingming-ipv6"
-    url: "https://raw.githubusercontent.com/fanmingming/live/main/tv/m3u/ipv6.m3u"
-    enabled: true
-  - name: "guovin-ipv6"
-    url: "https://raw.githubusercontent.com/Guovin/iptv-api/gd/output/ipv6/result.m3u"
+  - name: "guovin-all"
+    url: "https://raw.githubusercontent.com/Guovin/iptv-api/gd/output/result.m3u"
     enabled: true
   - name: "zbds-iptv4"
     url: "https://live.zbds.top/tv/iptv4.m3u"
+    enabled: true
+  - name: "fanmingming-ipv6"
+    url: "https://raw.githubusercontent.com/fanmingming/live/main/tv/m3u/ipv6.m3u"
     enabled: true
 
 # 长辈专属频道严格白名单（按顺序输出，杜绝杂乱与购物台）
